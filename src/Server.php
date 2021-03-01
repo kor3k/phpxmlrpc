@@ -3,15 +3,17 @@
 namespace PhpXmlRpc;
 
 use PhpXmlRpc\Helper\Charset;
-use PhpXmlRpc\Helper\Logger;
 use PhpXmlRpc\Helper\XMLParser;
+use Psr\Log;
+use PhpXmlRpc\Helper\LoggerAwareTrait;
 
 /**
  * Allows effortless implementation of XML-RPC servers
  */
-class Server
+class Server implements Log\LoggerAwareInterface
 {
-    protected static $logger;
+    use LoggerAwareTrait;
+
     protected static $parser;
     protected static $charsetEncoder;
 
@@ -99,19 +101,6 @@ class Server
     protected static $_xmlrpcs_occurred_errors = '';
     protected static $_xmlrpcs_prev_ehandler = '';
 
-    public function getLogger()
-    {
-        if (self::$logger === null) {
-            self::$logger = Logger::instance();
-        }
-        return self::$logger;
-    }
-
-    public static function setLogger($logger)
-    {
-        self::$logger = $logger;
-    }
-
     public function getParser()
     {
         if (self::$parser === null) {
@@ -173,6 +162,8 @@ class Server
                 $this->service();
             }
         }
+
+        $this->setLogger(new Log\NullLogger());
     }
 
     /**
@@ -335,7 +326,7 @@ class Server
                 header('Content-Length: ' . (int)strlen($payload));
             }
         } else {
-            $this->getLogger()->errorLog('XML-RPC: ' . __METHOD__ . ': http headers already sent before response is fully generated. Check for php warning or error messages');
+            $this->logger->error('XML-RPC: ' . __METHOD__ . ': http headers already sent before response is fully generated. Check for php warning or error messages');
         }
 
         print $payload;
@@ -435,7 +426,7 @@ class Server
         // check if $_SERVER is populated: it might have been disabled via ini file
         // (this is true even when in CLI mode)
         if (count($_SERVER) == 0) {
-            $this->getLogger()->errorLog('XML-RPC: ' . __METHOD__ . ': cannot parse request headers as $_SERVER is not populated');
+            $this->logger->error('XML-RPC: ' . __METHOD__ . ': cannot parse request headers as $_SERVER is not populated');
         }
 
         if ($this->debug > 1) {
@@ -556,7 +547,7 @@ class Server
                     if (extension_loaded('mbstring')) {
                         $data = mb_convert_encoding($data, 'UTF-8', $reqEncoding);
                     } else {
-                        $this->getLogger()->errorLog('XML-RPC: ' . __METHOD__ . ': invalid charset encoding of received request: ' . $reqEncoding);
+                        $this->logger->error('XML-RPC: ' . __METHOD__ . ': invalid charset encoding of received request: ' . $reqEncoding);
                     }
                 }
             }
@@ -601,7 +592,7 @@ class Server
                 $r = $this->execute($xmlRpcParser->_xh['method'], $xmlRpcParser->_xh['params'], $xmlRpcParser->_xh['pt']);
             } else {
                 // build a Request object with data parsed from xml
-                $req = new Request($xmlRpcParser->_xh['method']);
+                $req = (new Request($xmlRpcParser->_xh['method']))->setLogger($this->logger);
                 // now add parameters in
                 for ($i = 0; $i < count($xmlRpcParser->_xh['params']); $i++) {
                     $req->addParam($xmlRpcParser->_xh['params'][$i]);
@@ -686,7 +677,7 @@ class Server
 
         // verify that function to be invoked is in fact callable
         if (!is_callable($func)) {
-            $this->getLogger()->errorLog("XML-RPC: " . __METHOD__ . ": function '$funcName' registered as method handler is not callable");
+            $this->logger->error("XML-RPC: " . __METHOD__ . ": function '$funcName' registered as method handler is not callable");
             return new Response(
                 0,
                 PhpXmlRpc::$xmlrpcerr['server_error'],
@@ -709,7 +700,7 @@ class Server
                     $r = call_user_func($func, $req);
                 }
                 if (!is_a($r, 'PhpXmlRpc\Response')) {
-                    $this->getLogger()->errorLog("XML-RPC: " . __METHOD__ . ": function '$funcName' registered as method handler does not return an xmlrpc response object but a " . gettype($r));
+                    $this->logger->error("XML-RPC: " . __METHOD__ . ": function '$funcName' registered as method handler does not return an xmlrpc response object but a " . gettype($r));
                     if (is_a($r, 'PhpXmlRpc\Value')) {
                         $r = new Response($r);
                     } else {

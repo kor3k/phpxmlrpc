@@ -4,16 +4,18 @@ namespace PhpXmlRpc;
 
 use PhpXmlRpc\Helper\Charset;
 use PhpXmlRpc\Helper\Http;
-use PhpXmlRpc\Helper\Logger;
 use PhpXmlRpc\Helper\XMLParser;
+use Psr\Log;
+use PhpXmlRpc\Helper\LoggerAwareTrait;
 
 /**
  * This class provides the representation of a request to an XML-RPC server.
  * A client sends a PhpXmlrpc\Request to a server, and receives back an PhpXmlrpc\Response.
  */
-class Request
+class Request implements Log\LoggerAwareInterface
 {
-    protected static $logger;
+    use LoggerAwareTrait;
+
     protected static $parser;
     protected static $charsetEncoder;
 
@@ -28,19 +30,6 @@ class Request
 
     // holds data while parsing the response. NB: Not a full Response object
     protected $httpResponse = array();
-
-    public function getLogger()
-    {
-        if (self::$logger === null) {
-            self::$logger = Logger::instance();
-        }
-        return self::$logger;
-    }
-
-    public static function setLogger($logger)
-    {
-        self::$logger = $logger;
-    }
 
     public function getParser()
     {
@@ -78,6 +67,8 @@ class Request
         foreach ($params as $param) {
             $this->addParam($param);
         }
+
+        $this->setLogger(new Log\NullLogger());
     }
 
     /**
@@ -240,13 +231,13 @@ class Request
     public function parseResponse($data = '', $headersProcessed = false, $returnType = 'xmlrpcvals')
     {
         if ($this->debug) {
-            $this->getLogger()->debugMessage("---GOT---\n$data\n---END---");
+            $this->logger->debug("---GOT---\n$data\n---END---");
         }
 
         $this->httpResponse = array('raw_data' => $data, 'headers' => array(), 'cookies' => array());
 
         if ($data == '') {
-            $this->getLogger()->errorLog('XML-RPC: ' . __METHOD__ . ': no response received from server.');
+            $this->logger->error('XML-RPC: ' . __METHOD__ . ': no response received from server.');
             return new Response(0, PhpXmlRpc::$xmlrpcerr['no_data'], PhpXmlRpc::$xmlrpcstr['no_data']);
         }
 
@@ -286,7 +277,7 @@ class Request
                 $start += strlen('<!-- SERVER DEBUG INFO (BASE64 ENCODED):');
                 $end = strpos($data, '-->', $start);
                 $comments = substr($data, $start, $end - $start);
-                $this->getLogger()->debugMessage("---SERVER DEBUG INFO (DECODED) ---\n\t" .
+                $this->logger->debug("---SERVER DEBUG INFO (DECODED) ---\n\t" .
                     str_replace("\n", "\n\t", base64_decode($comments)) . "\n---END---", $respEncoding);
             }
         }
@@ -315,7 +306,7 @@ class Request
                     if (extension_loaded('mbstring')) {
                         $data = mb_convert_encoding($data, 'UTF-8', $respEncoding);
                     } else {
-                        $this->getLogger()->errorLog('XML-RPC: ' . __METHOD__ . ': invalid charset encoding of received response: ' . $respEncoding);
+                        $this->logger->error('XML-RPC: ' . __METHOD__ . ': invalid charset encoding of received response: ' . $respEncoding);
                     }
                 }
             }
@@ -366,9 +357,7 @@ class Request
                 PhpXmlRpc::$xmlrpcstr['invalid_return']);
         } else {
             if ($this->debug > 1) {
-                $this->getLogger()->debugMessage(
-                    "---PARSED---\n".var_export($xmlRpcParser->_xh['value'], true)."\n---END---"
-                );
+                $this->logger->debug("---PARSED---\n".var_export($xmlRpcParser->_xh['value'], true)."\n---END---");
             }
 
             $v = $xmlRpcParser->_xh['value'];

@@ -7,7 +7,8 @@
 
 namespace PhpXmlRpc;
 
-use PhpXmlRpc\Helper\Logger;
+use Psr\Log;
+use PhpXmlRpc\Helper\LoggerAwareTrait;
 
 /**
  * PHP-XMLRPC "wrapper" class - generate stubs to transparently access xmlrpc methods as php functions and vice-versa.
@@ -19,24 +20,16 @@ use PhpXmlRpc\Helper\Logger;
  * @todo add support for 'epivals' mode
  * @todo allow setting custom namespace for generated wrapping code
  */
-class Wrapper
+class Wrapper implements Log\LoggerAwareInterface
 {
+    use LoggerAwareTrait;
+
     /// used to hold a reference to object instances whose methods get wrapped by wrapPhpFunction(), in 'create source' mode
     public static $objHolder = array();
 
-    protected static $logger;
-
-    public function getLogger()
+    public function __construct()
     {
-        if (self::$logger === null) {
-            self::$logger = Logger::instance();
-        }
-        return self::$logger;
-    }
-
-    public static function setLogger($logger)
-    {
-        self::$logger = $logger;
+        $this->setLogger(new Log\NullLogger());
     }
 
     /**
@@ -183,7 +176,7 @@ class Wrapper
         }
         if (is_array($callable)) {
             if (count($callable) < 2 || (!is_string($callable[0]) && !is_object($callable[0]))) {
-                $this->getLogger()->errorLog('XML-RPC: ' . __METHOD__ . ': syntax for function to be wrapped is wrong');
+                $this->logger->error('XML-RPC: ' . __METHOD__ . ': syntax for function to be wrapped is wrong');
                 return false;
             }
             if (is_string($callable[0])) {
@@ -195,7 +188,7 @@ class Wrapper
         } else if ($callable instanceof \Closure) {
             // we do not support creating code which wraps closures, as php does not allow to serialize them
             if (!$buildIt) {
-                $this->getLogger()->errorLog('XML-RPC: ' . __METHOD__ . ': a closure can not be wrapped in generated source code');
+                $this->logger->error('XML-RPC: ' . __METHOD__ . ': a closure can not be wrapped in generated source code');
                 return false;
             }
 
@@ -207,7 +200,7 @@ class Wrapper
         }
 
         if (!$exists) {
-            $this->getLogger()->errorLog('XML-RPC: ' . __METHOD__ . ': function to be wrapped is not defined: ' . $plainFuncName);
+            $this->logger->error('XML-RPC: ' . __METHOD__ . ': function to be wrapped is not defined: ' . $plainFuncName);
             return false;
         }
 
@@ -251,23 +244,23 @@ class Wrapper
         if (is_array($callable)) {
             $func = new \ReflectionMethod($callable[0], $callable[1]);
             if ($func->isPrivate()) {
-                $this->getLogger()->errorLog('XML-RPC: ' . __METHOD__ . ': method to be wrapped is private: ' . $plainFuncName);
+                $this->logger->error('XML-RPC: ' . __METHOD__ . ': method to be wrapped is private: ' . $plainFuncName);
                 return false;
             }
             if ($func->isProtected()) {
-                $this->getLogger()->errorLog('XML-RPC: ' . __METHOD__ . ': method to be wrapped is protected: ' . $plainFuncName);
+                $this->logger->error('XML-RPC: ' . __METHOD__ . ': method to be wrapped is protected: ' . $plainFuncName);
                 return false;
             }
             if ($func->isConstructor()) {
-                $this->getLogger()->errorLog('XML-RPC: ' . __METHOD__ . ': method to be wrapped is the constructor: ' . $plainFuncName);
+                $this->logger->error('XML-RPC: ' . __METHOD__ . ': method to be wrapped is the constructor: ' . $plainFuncName);
                 return false;
             }
             if ($func->isDestructor()) {
-                $this->getLogger()->errorLog('XML-RPC: ' . __METHOD__ . ': method to be wrapped is the destructor: ' . $plainFuncName);
+                $this->logger->error('XML-RPC: ' . __METHOD__ . ': method to be wrapped is the destructor: ' . $plainFuncName);
                 return false;
             }
             if ($func->isAbstract()) {
-                $this->getLogger()->errorLog('XML-RPC: ' . __METHOD__ . ': method to be wrapped is abstract: ' . $plainFuncName);
+                $this->logger->error('XML-RPC: ' . __METHOD__ . ': method to be wrapped is abstract: ' . $plainFuncName);
                 return false;
             }
             /// @todo add more checks for static vs. nonstatic?
@@ -277,7 +270,7 @@ class Wrapper
         if ($func->isInternal()) {
             // Note: from PHP 5.1.0 onward, we will possibly be able to use invokeargs
             // instead of getparameters to fully reflect internal php functions ?
-            $this->getLogger()->errorLog('XML-RPC: ' . __METHOD__ . ': function to be wrapped is internal: ' . $plainFuncName);
+            $this->logger->error('XML-RPC: ' . __METHOD__ . ': function to be wrapped is internal: ' . $plainFuncName);
             return false;
         }
 
@@ -760,7 +753,7 @@ class Wrapper
         $client->setDebug($debug);
         $response = $client->send($req, $timeout, $protocol);
         if ($response->faultCode()) {
-            $this->getLogger()->errorLog('XML-RPC: ' . __METHOD__ . ': could not retrieve method signature from remote server for method ' . $methodName);
+            $this->logger->error('XML-RPC: ' . __METHOD__ . ': could not retrieve method signature from remote server for method ' . $methodName);
             return false;
         }
 
@@ -771,7 +764,7 @@ class Wrapper
         }
 
         if (!is_array($mSig) || count($mSig) <= $sigNum) {
-            $this->getLogger()->errorLog('XML-RPC: ' . __METHOD__ . ': could not retrieve method signature nr.' . $sigNum . ' from remote server for method ' . $methodName);
+            $this->logger->error('XML-RPC: ' . __METHOD__ . ': could not retrieve method signature nr.' . $sigNum . ' from remote server for method ' . $methodName);
             return false;
         }
 
@@ -1036,7 +1029,7 @@ class Wrapper
         $req = new $reqClass('system.listMethods');
         $response = $client->send($req, $timeout, $protocol);
         if ($response->faultCode()) {
-            $this->getLogger()->errorLog('XML-RPC: ' . __METHOD__ . ': could not retrieve method list from remote server');
+            $this->logger->error('XML-RPC: ' . __METHOD__ . ': could not retrieve method list from remote server');
 
             return false;
         } else {
@@ -1046,8 +1039,7 @@ class Wrapper
                 $mList = $decoder->decode($mList);
             }
             if (!is_array($mList) || !count($mList)) {
-                $this->getLogger()->errorLog('XML-RPC: ' . __METHOD__ . ': could not retrieve meaningful method list from remote server');
-
+                $this->logger->error('XML-RPC: ' . __METHOD__ . ': could not retrieve meaningful method list from remote server');
                 return false;
             } else {
                 // pick a suitable name for the new function, avoiding collisions
@@ -1088,7 +1080,7 @@ class Wrapper
                             }
                             $source .= $methodWrap['source'] . "\n";
                         } else {
-                            $this->getLogger()->errorLog('XML-RPC: ' . __METHOD__ . ': will not create class method to wrap remote method ' . $mName);
+                            $this->logger->error('XML-RPC: ' . __METHOD__ . ': will not create class method to wrap remote method ' . $mName);
                         }
                     }
                 }
@@ -1099,7 +1091,7 @@ class Wrapper
                     if ($allOK) {
                         return $xmlrpcClassName;
                     } else {
-                        $this->getLogger()->errorLog('XML-RPC: ' . __METHOD__ . ': could not create class ' . $xmlrpcClassName . ' to wrap remote server ' . $client->server);
+                        $this->logger->error('XML-RPC: ' . __METHOD__ . ': could not create class ' . $xmlrpcClassName . ' to wrap remote server ' . $client->server);
                         return false;
                     }
                 } else {

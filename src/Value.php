@@ -3,13 +3,16 @@
 namespace PhpXmlRpc;
 
 use PhpXmlRpc\Helper\Charset;
-use PhpXmlRpc\Helper\Logger;
+use Psr\Log;
+use PhpXmlRpc\Helper\LoggerAwareTrait;
 
 /**
  * This class enables the creation of values for XML-RPC, by encapsulating plain php values.
  */
-class Value implements \Countable, \IteratorAggregate, \ArrayAccess
+class Value implements \Countable, \IteratorAggregate, \ArrayAccess, Log\LoggerAwareInterface
 {
+    use LoggerAwareTrait;
+
     public static $xmlrpcI4 = "i4";
     public static $xmlrpcI8 = "i8";
     public static $xmlrpcInt = "int";
@@ -37,7 +40,6 @@ class Value implements \Countable, \IteratorAggregate, \ArrayAccess
         "null" => 1,
     );
 
-    protected static $logger;
     protected static $charsetEncoder;
 
     /// @todo: do these need to be public?
@@ -50,19 +52,6 @@ class Value implements \Countable, \IteratorAggregate, \ArrayAccess
     public $mytype = 0;
     /** @var string|null $_php_class */
     public $_php_class = null;
-
-    public function getLogger()
-    {
-        if (self::$logger === null) {
-            self::$logger = Logger::instance();
-        }
-        return self::$logger;
-    }
-
-    public static function setLogger($logger)
-    {
-        self::$logger = $logger;
-    }
 
     public function getCharsetEncoder()
     {
@@ -119,9 +108,11 @@ class Value implements \Countable, \IteratorAggregate, \ArrayAccess
                     $this->me['struct'] = $val;
                     break;
                 default:
-                    $this->getLogger()->errorLog("XML-RPC: " . __METHOD__ . ": not a known type ($type)");
+                    $this->logger->error("XML-RPC: " . __METHOD__ . ": not a known type ($type)");
             }
         }
+
+        $this->setLogger(new Log\NullLogger());
     }
 
     /**
@@ -144,7 +135,7 @@ class Value implements \Countable, \IteratorAggregate, \ArrayAccess
         }
 
         if ($typeOf !== 1) {
-            $this->getLogger()->errorLog("XML-RPC: " . __METHOD__ . ": not a scalar type ($type)");
+            $this->logger->error("XML-RPC: " . __METHOD__ . ": not a scalar type ($type)");
             return 0;
         }
 
@@ -161,10 +152,10 @@ class Value implements \Countable, \IteratorAggregate, \ArrayAccess
 
         switch ($this->mytype) {
             case 1:
-                $this->getLogger()->errorLog('XML-RPC: ' . __METHOD__ . ': scalar xmlrpc value can have only one value');
+                $this->logger->error('XML-RPC: ' . __METHOD__ . ': scalar xmlrpc value can have only one value');
                 return 0;
             case 3:
-                $this->getLogger()->errorLog('XML-RPC: ' . __METHOD__ . ': cannot add anonymous scalar to struct xmlrpc value');
+                $this->logger->error('XML-RPC: ' . __METHOD__ . ': cannot add anonymous scalar to struct xmlrpc value');
                 return 0;
             case 2:
                 // we're adding a scalar value to an array here
@@ -206,7 +197,7 @@ class Value implements \Countable, \IteratorAggregate, \ArrayAccess
 
             return 1;
         } else {
-            $this->getLogger()->errorLog('XML-RPC: ' . __METHOD__ . ': already initialized as a [' . $this->kindOf() . ']');
+            $this->logger->error('XML-RPC: ' . __METHOD__ . ': already initialized as a [' . $this->kindOf() . ']');
             return 0;
         }
     }
@@ -237,7 +228,7 @@ class Value implements \Countable, \IteratorAggregate, \ArrayAccess
 
             return 1;
         } else {
-            $this->getLogger()->errorLog('XML-RPC: ' . __METHOD__ . ': already initialized as a [' . $this->kindOf() . ']');
+            $this->logger->error('XML-RPC: ' . __METHOD__ . ': already initialized as a [' . $this->kindOf() . ']');
             return 0;
         }
     }

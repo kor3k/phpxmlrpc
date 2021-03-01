@@ -2,30 +2,24 @@
 
 namespace PhpXmlRpc;
 
-use PhpXmlRpc\Helper\Logger;
 use PhpXmlRpc\Helper\XMLParser;
+use Psr\Log;
+use PhpXmlRpc\Helper\LoggerAwareTrait;
 
 /**
  * A helper class to easily convert between Value objects and php native values
  * @todo implement an interface
  * @todo add class constants for the options values
  */
-class Encoder
+class Encoder implements Log\LoggerAwareInterface
 {
-    protected static $logger;
+    use LoggerAwareTrait;
+
     protected static $parser;
 
-    public function getLogger()
+    public function __construct()
     {
-        if (self::$logger === null) {
-            self::$logger = Logger::instance();
-        }
-        return self::$logger;
-    }
-
-    public static function setLogger($logger)
-    {
-        self::$logger = $logger;
+        $this->setLogger(new Log\NullLogger());
     }
 
     public function getParser()
@@ -309,7 +303,7 @@ class Encoder
                     if (extension_loaded('mbstring')) {
                         $xmlVal = mb_convert_encoding($xmlVal, 'UTF-8', $valEncoding);
                     } else {
-                        $this->getLogger()->errorLog('XML-RPC: ' . __METHOD__ . ': invalid charset encoding of xml text: ' . $valEncoding);
+                        $this->logger->error('XML-RPC: ' . __METHOD__ . ': invalid charset encoding of xml text: ' . $valEncoding);
                     }
                 }
             }
@@ -334,7 +328,7 @@ class Encoder
         if ($xmlRpcParser->_xh['isf'] > 1) {
             // test that $xmlrpc->_xh['value'] is an obj, too???
 
-            $this->getLogger()->errorLog($xmlRpcParser->_xh['isf_reason']);
+            $this->logger->error($xmlRpcParser->_xh['isf_reason']);
 
             return false;
         }

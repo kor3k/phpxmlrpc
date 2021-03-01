@@ -2,18 +2,19 @@
 
 namespace PhpXmlRpc;
 
-use PhpXmlRpc\Helper\Logger;
+use Psr\Log;
+use PhpXmlRpc\Helper\LoggerAwareTrait;
 
 /**
  * Used to represent a client of an XML-RPC server.
  */
-class Client
+class Client implements Log\LoggerAwareInterface
 {
+    use LoggerAwareTrait;
+
     const USE_CURL_NEVER = 0;
     const USE_CURL_ALWAYS = 1;
     const USE_CURL_AUTO = 2;
-
-    protected static $logger;
 
     /// @todo: do these need to be public?
     public $method = 'http';
@@ -118,19 +119,6 @@ class Client
      */
     public $user_agent;
 
-    public function getLogger()
-    {
-        if (self::$logger === null) {
-            self::$logger = Logger::instance();
-        }
-        return self::$logger;
-    }
-
-    public static function setLogger($logger)
-    {
-        self::$logger = $logger;
-    }
-
     /**
      * @param string $path either the PATH part of the xmlrpc server URL, or complete server URL (in which case you
      *                     should use and empty string for all other parameters)
@@ -209,6 +197,8 @@ class Client
 
         // initialize user_agent string
         $this->user_agent = PhpXmlRpc::$xmlrpcName . ' ' . PhpXmlRpc::$xmlrpcVersion;
+
+        $this->setLogger(new Log\NullLogger());
     }
 
     /**
@@ -495,7 +485,7 @@ class Client
 
             return $r;
         } elseif (is_string($req)) {
-            $n = new Request('');
+            $n = (new Request(''))->setLogger($this->logger);
             $n->payload = $req;
             $req = $n;
         }
@@ -686,7 +676,7 @@ class Client
         if ($username != '') {
             $credentials = 'Authorization: Basic ' . base64_encode($username . ':' . $password) . "\r\n";
             if ($authType != 1) {
-                $this->getLogger()->errorLog('XML-RPC: ' . __METHOD__ . ': warning. Only Basic auth is supported with HTTP 1.0');
+                $this->logger->error('XML-RPC: ' . __METHOD__ . ': warning. Only Basic auth is supported with HTTP 1.0');
             }
         }
 
@@ -706,7 +696,7 @@ class Client
             $uri = 'http://' . $server . ':' . $port . $this->path;
             if ($proxyUsername != '') {
                 if ($proxyAuthType != 1) {
-                    $this->getLogger()->errorLog('XML-RPC: ' . __METHOD__ . ': warning. Only Basic auth to proxy is supported with HTTP 1.0');
+                    $this->logger->error('XML-RPC: ' . __METHOD__ . ': warning. Only Basic auth to proxy is supported with HTTP 1.0');
                 }
                 $proxyCredentials = 'Proxy-Authorization: Basic ' . base64_encode($proxyUsername . ':' . $proxyPassword) . "\r\n";
             }
@@ -762,7 +752,7 @@ class Client
             $payload;
 
         if ($this->debug > 1) {
-            $this->getLogger()->debugMessage("---SENDING---\n$op\n---END---");
+            $this->logger->debug("---SENDING---\n$op\n---END---");
         }
 
         $contextOptions = array();
@@ -916,7 +906,7 @@ class Client
         }
 
         if ($this->debug > 1) {
-            $this->getLogger()->debugMessage("---SENDING---\n$payload\n---END---");
+            $this->logger->debug("---SENDING---\n$payload\n---END---");
         }
 
         if (!$keepAlive || !$this->xmlrpc_curl_handle) {
@@ -992,7 +982,7 @@ class Client
             if (defined('CURLOPT_HTTPAUTH')) {
                 curl_setopt($curl, CURLOPT_HTTPAUTH, $authType);
             } elseif ($authType != 1) {
-                $this->getLogger()->errorLog('XML-RPC: ' . __METHOD__ . ': warning. Only Basic auth is supported by the current PHP/curl install');
+                $this->logger->error('XML-RPC: ' . __METHOD__ . ': warning. Only Basic auth is supported by the current PHP/curl install');
             }
         }
 
@@ -1040,7 +1030,7 @@ class Client
                 if (defined('CURLOPT_PROXYAUTH')) {
                     curl_setopt($curl, CURLOPT_PROXYAUTH, $proxyAuthType);
                 } elseif ($proxyAuthType != 1) {
-                    $this->getLogger()->errorLog('XML-RPC: ' . __METHOD__ . ': warning. Only Basic auth to proxy is supported by the current PHP/curl install');
+                    $this->logger->error('XML-RPC: ' . __METHOD__ . ': warning. Only Basic auth to proxy is supported by the current PHP/curl install');
                 }
             }
         }
@@ -1070,7 +1060,7 @@ class Client
                 $message .= $name . ': ' . $val . "\n";
             }
             $message .= '---END---';
-            $this->getLogger()->debugMessage($message);
+            $this->logger->debug($message);
         }
 
         if (!$result) {
@@ -1193,7 +1183,7 @@ class Client
             $call['params'] = new Value($params, 'array');
             $calls[] = new Value($call, 'struct');
         }
-        $multiCall = new Request('system.multicall');
+        $multiCall = (new Request('system.multicall'))->setLogger($this->logger);
         $multiCall->addParam(new Value($calls, 'array'));
 
         // Attempt RPC call
