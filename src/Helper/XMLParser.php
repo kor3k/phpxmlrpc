@@ -4,6 +4,7 @@ namespace PhpXmlRpc\Helper;
 
 use PhpXmlRpc\PhpXmlRpc;
 use PhpXmlRpc\Value;
+use Psr\Log;
 
 /**
  * Deals with parsing the XML.
@@ -15,8 +16,10 @@ use PhpXmlRpc\Value;
  * @todo if iconv() or mb_string() are available, we could allow to convert the received xml to a custom charset encoding
  *       while parsing, which is faster than doing it later by going over the rebuilt data structure
  */
-class XMLParser
+class XMLParser implements Log\LoggerAwareInterface
 {
+    use LoggerAwareTrait;
+
     const RETURN_XMLRPCVALS = 'xmlrpcvals';
     const RETURN_EPIVALS = 'epivals';
     const RETURN_PHP = 'phpvals';
@@ -91,6 +94,7 @@ class XMLParser
     public function __construct(array $options = array())
     {
         $this->parsing_options = $options;
+        $this->setLogger(new Log\NullLogger());
     }
 
     /**
@@ -424,7 +428,7 @@ class XMLParser
                         $this->_xh['value'] = $this->_xh['ac'];
                     } elseif ($name == 'DATETIME.ISO8601') {
                         if (!preg_match('/^[0-9]{8}T[0-9]{2}:[0-9]{2}:[0-9]{2}$/', $this->_xh['ac'])) {
-                            Logger::instance()->errorLog('XML-RPC: ' . __METHOD__ . ': invalid value received in DATETIME: ' . $this->_xh['ac']);
+                            $this->logger->error('XML-RPC: ' . __METHOD__ . ': invalid value received in DATETIME: ' . $this->_xh['ac']);
                         }
                         $this->_xh['vt'] = Value::$xmlrpcDateTime;
                         $this->_xh['value'] = $this->_xh['ac'];
@@ -443,7 +447,7 @@ class XMLParser
                         } else {
                             // log if receiving something strange, even though we set the value to false anyway
                             if ($this->_xh['ac'] != '0' && strcasecmp($this->_xh['ac'], 'false') != 0) {
-                                Logger::instance()->errorLog('XML-RPC: ' . __METHOD__ . ': invalid value received in BOOLEAN: ' . $this->_xh['ac']);
+                                $this->logger->error('XML-RPC: ' . __METHOD__ . ': invalid value received in BOOLEAN: ' . $this->_xh['ac']);
                             }
                             $this->_xh['value'] = false;
                         }
@@ -453,7 +457,7 @@ class XMLParser
                         // NOTE: regexp could be much stricter than this...
                         if (!preg_match('/^[+-eE0123456789 \t.]+$/', $this->_xh['ac'])) {
                             /// @todo: find a better way of throwing an error than this!
-                            Logger::instance()->errorLog('XML-RPC: ' . __METHOD__ . ': non numeric value received in DOUBLE: ' . $this->_xh['ac']);
+                            $this->logger->error('XML-RPC: ' . __METHOD__ . ': non numeric value received in DOUBLE: ' . $this->_xh['ac']);
                             $this->_xh['value'] = 'ERROR_NON_NUMERIC_FOUND';
                         } else {
                             // it's ok, add it on
@@ -464,7 +468,7 @@ class XMLParser
                         // we must check that only 0123456789-<space> are characters here
                         if (!preg_match('/^[+-]?[0123456789 \t]+$/', $this->_xh['ac'])) {
                             /// @todo find a better way of throwing an error than this!
-                            Logger::instance()->errorLog('XML-RPC: ' . __METHOD__ . ': non numeric value received in INT: ' . $this->_xh['ac']);
+                            $this->logger->error('XML-RPC: ' . __METHOD__ . ': non numeric value received in INT: ' . $this->_xh['ac']);
                             $this->_xh['value'] = 'ERROR_NON_NUMERIC_FOUND';
                         } else {
                             // it's ok, add it on
@@ -483,7 +487,7 @@ class XMLParser
                         $vscount = count($this->_xh['valuestack']);
                         $this->_xh['valuestack'][$vscount - 1]['values'][$this->_xh['valuestack'][$vscount - 1]['name']] = $this->_xh['value'];
                     } else {
-                        Logger::instance()->errorLog('XML-RPC: ' . __METHOD__ . ': missing VALUE inside STRUCT in received xml');
+                        $this->logger->error('XML-RPC: ' . __METHOD__ . ': missing VALUE inside STRUCT in received xml');
                     }
                     break;
                 case 'DATA':
@@ -506,7 +510,7 @@ class XMLParser
                         $this->_xh['params'][] = $this->_xh['value'];
                         $this->_xh['pt'][] = $this->_xh['vt'];
                     } else {
-                        Logger::instance()->errorLog('XML-RPC: ' . __METHOD__ . ': missing VALUE inside PARAM in received xml');
+                        $this->logger->error('XML-RPC: ' . __METHOD__ . ': missing VALUE inside PARAM in received xml');
                     }
                     break;
                 case 'METHODNAME':
