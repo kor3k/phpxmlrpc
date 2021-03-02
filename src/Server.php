@@ -204,7 +204,7 @@ class Server implements Log\LoggerAwareInterface
      * character set.
      * @param string $msg
      */
-    public static function error_occurred($msg)
+    public function error_occurred($msg)
     {
         static::$_xmlrpcs_occurred_errors .= $msg . "\n";
     }
@@ -826,7 +826,7 @@ class Server implements Log\LoggerAwareInterface
 
         return array(
             'system.listMethods' => array(
-                'function' => 'PhpXmlRpc\Server::_xmlrpcs_listMethods',
+                'function' => [$this, '_xmlrpcs_listMethods'],
                 // listMethods: signature was either a string, or nothing.
                 // The useless string variant has been removed
                 'signature' => array(array(Value::$xmlrpcArray)),
@@ -834,25 +834,25 @@ class Server implements Log\LoggerAwareInterface
                 'signature_docs' => array(array('list of method names')),
             ),
             'system.methodHelp' => array(
-                'function' => 'PhpXmlRpc\Server::_xmlrpcs_methodHelp',
+                'function' => [$this, '_xmlrpcs_methodHelp'],
                 'signature' => array(array(Value::$xmlrpcString, Value::$xmlrpcString)),
                 'docstring' => 'Returns help text if defined for the method passed, otherwise returns an empty string',
                 'signature_docs' => array(array('method description', 'name of the method to be described')),
             ),
             'system.methodSignature' => array(
-                'function' => 'PhpXmlRpc\Server::_xmlrpcs_methodSignature',
+                'function' => [$this, '_xmlrpcs_methodSignature'],
                 'signature' => array(array(Value::$xmlrpcArray, Value::$xmlrpcString)),
                 'docstring' => 'Returns an array of known signatures (an array of arrays) for the method name passed. If no signatures are known, returns a none-array (test for type != array to detect missing signature)',
                 'signature_docs' => array(array('list of known signatures, each sig being an array of xmlrpc type names', 'name of method to be described')),
             ),
             'system.multicall' => array(
-                'function' => 'PhpXmlRpc\Server::_xmlrpcs_multicall',
+                'function' => [$this, '_xmlrpcs_multicall'],
                 'signature' => array(array(Value::$xmlrpcArray, Value::$xmlrpcArray)),
                 'docstring' => 'Boxcar multiple RPC calls in one request. See http://www.xmlrpc.com/discuss/msgReader$1208 for details',
                 'signature_docs' => array(array('list of response structs, where each struct has the usual members', 'list of calls, with each call being represented as a struct, with members "methodname" and "params"')),
             ),
             'system.getCapabilities' => array(
-                'function' => 'PhpXmlRpc\Server::_xmlrpcs_getCapabilities',
+                'function' => [$this, '_xmlrpcs_getCapabilities'],
                 'signature' => array(array(Value::$xmlrpcStruct)),
                 'docstring' => 'This method lists all the capabilities that the XML-RPC server has: the (more or less standard) extensions to the xmlrpc spec that it adheres to',
                 'signature_docs' => array(array('list of capabilities, described as structs with a version number and url for the spec')),
@@ -898,40 +898,37 @@ class Server implements Log\LoggerAwareInterface
     }
 
     /**
-     * @param Server $server
      * @param Request $req
      * @return Response
      */
-    public static function _xmlrpcs_getCapabilities($server, $req = null)
+    public function _xmlrpcs_getCapabilities($req = null)
     {
         $encoder = new Encoder();
-        return new Response($encoder->encode($server->getCapabilities()));
+        return new Response($encoder->encode($this->getCapabilities()));
     }
 
     /**
-     * @param Server $server
      * @param Request $req if called in plain php values mode, second param is missing
      * @return Response
      */
-    public static function _xmlrpcs_listMethods($server, $req = null)
+    public function _xmlrpcs_listMethods($req = null)
     {
         $outAr = array();
-        foreach ($server->dmap as $key => $val) {
-            $outAr[] = new Value($key, 'string');
+        foreach ($this->dmap as $key => $val) {
+            $outAr[] = (new Value($key, 'string'))->setLogger($this->logger);
         }
-        foreach ($server->getSystemDispatchMap() as $key => $val) {
-            $outAr[] = new Value($key, 'string');
+        foreach ($this->getSystemDispatchMap() as $key => $val) {
+            $outAr[] = (new Value($key, 'string'))->setLogger($this->logger);
         }
 
-        return new Response(new Value($outAr, 'array'));
+        return new Response((new Value($outAr, 'array'))->setLogger($this->logger));
     }
 
     /**
-     * @param Server $server
      * @param Request $req
      * @return Response
      */
-    public static function _xmlrpcs_methodSignature($server, $req)
+    public function _xmlrpcs_methodSignature($req)
     {
         // let accept as parameter both an xmlrpc value or string
         if (is_object($req)) {
@@ -940,10 +937,10 @@ class Server implements Log\LoggerAwareInterface
         } else {
             $methName = $req;
         }
-        if ($server->isSyscall($methName)) {
-            $dmap = $server->getSystemDispatchMap();
+        if ($this->isSyscall($methName)) {
+            $dmap = $this->getSystemDispatchMap();
         } else {
-            $dmap = $server->dmap;
+            $dmap = $this->dmap;
         }
         if (isset($dmap[$methName])) {
             if (isset($dmap[$methName]['signature'])) {
@@ -953,7 +950,7 @@ class Server implements Log\LoggerAwareInterface
                     foreach ($inSig as $sig) {
                         $curSig[] = new Value($sig, 'string');
                     }
-                    $sigs[] = new Value($curSig, 'array');
+                    $sigs[] = (new Value($curSig, 'array'))->setLogger($this->logger);
                 }
                 $r = new Response(new Value($sigs, 'array'));
             } else {
@@ -969,11 +966,10 @@ class Server implements Log\LoggerAwareInterface
     }
 
     /**
-     * @param Server $server
      * @param Request $req
      * @return Response
      */
-    public static function _xmlrpcs_methodHelp($server, $req)
+    public function _xmlrpcs_methodHelp($req)
     {
         // let accept as parameter both an xmlrpc value or string
         if (is_object($req)) {
@@ -982,10 +978,10 @@ class Server implements Log\LoggerAwareInterface
         } else {
             $methName = $req;
         }
-        if ($server->isSyscall($methName)) {
-            $dmap = $server->getSystemDispatchMap();
+        if ($this->isSyscall($methName)) {
+            $dmap = $this->getSystemDispatchMap();
         } else {
-            $dmap = $server->dmap;
+            $dmap = $this->dmap;
         }
         if (isset($dmap[$methName])) {
             if (isset($dmap[$methName]['docstring'])) {
@@ -1000,7 +996,7 @@ class Server implements Log\LoggerAwareInterface
         return $r;
     }
 
-    public static function _xmlrpcs_multicall_error($err)
+    public function _xmlrpcs_multicall_error($err)
     {
         if (is_string($err)) {
             $str = PhpXmlRpc::$xmlrpcstr["multicall_${err}"];
@@ -1010,84 +1006,82 @@ class Server implements Log\LoggerAwareInterface
             $str = $err->faultString();
         }
         $struct = array();
-        $struct['faultCode'] = new Value($code, 'int');
-        $struct['faultString'] = new Value($str, 'string');
+        $struct['faultCode'] = (new Value($code, 'int'))->setLogger($this->logger);
+        $struct['faultString'] = (new Value($str, 'string'))->setLogger($this->logger);
 
-        return new Value($struct, 'struct');
+        return (new Value($struct, 'struct'))->setLogger($this->logger);
     }
 
     /**
-     * @param Server $server
      * @param Value $call
      * @return Value
      */
-    public static function _xmlrpcs_multicall_do_call($server, $call)
+    public function _xmlrpcs_multicall_do_call($call)
     {
         if ($call->kindOf() != 'struct') {
-            return static::_xmlrpcs_multicall_error('notstruct');
+            return $this->_xmlrpcs_multicall_error('notstruct');
         }
         $methName = @$call['methodName'];
         if (!$methName) {
-            return static::_xmlrpcs_multicall_error('nomethod');
+            return $this->_xmlrpcs_multicall_error('nomethod');
         }
         if ($methName->kindOf() != 'scalar' || $methName->scalartyp() != 'string') {
-            return static::_xmlrpcs_multicall_error('notstring');
+            return $this->_xmlrpcs_multicall_error('notstring');
         }
         if ($methName->scalarval() == 'system.multicall') {
-            return static::_xmlrpcs_multicall_error('recursion');
+            return $this->_xmlrpcs_multicall_error('recursion');
         }
 
         $params = @$call['params'];
         if (!$params) {
-            return static::_xmlrpcs_multicall_error('noparams');
+            return $this->_xmlrpcs_multicall_error('noparams');
         }
         if ($params->kindOf() != 'array') {
-            return static::_xmlrpcs_multicall_error('notarray');
+            return $this->_xmlrpcs_multicall_error('notarray');
         }
 
         $req = new Request($methName->scalarval());
         foreach($params as $i => $param) {
             if (!$req->addParam($param)) {
                 $i++; // for error message, we count params from 1
-                return static::_xmlrpcs_multicall_error(new Response(0,
+                return $this->_xmlrpcs_multicall_error(new Response(0,
                     PhpXmlRpc::$xmlrpcerr['incorrect_params'],
                     PhpXmlRpc::$xmlrpcstr['incorrect_params'] . ": probable xml error in param " . $i));
             }
         }
 
-        $result = $server->execute($req);
+        $result = $this->execute($req);
 
         if ($result->faultCode() != 0) {
-            return static::_xmlrpcs_multicall_error($result); // Method returned fault.
+            return $this->_xmlrpcs_multicall_error($result); // Method returned fault.
         }
 
-        return new Value(array($result->value()), 'array');
+        return (new Value(array($result->value()), 'array'))->setLogger($this->logger);
     }
 
     /**
-     * @param Server $server
      * @param Value $call
      * @return Value
      */
-    public static function _xmlrpcs_multicall_do_call_phpvals($server, $call)
+    public function _xmlrpcs_multicall_do_call_phpvals($call)
     {
         if (!is_array($call)) {
-            return static::_xmlrpcs_multicall_error('notstruct');
+            return $this->_xmlrpcs_multicall_error('notstruct');
         }
         if (!array_key_exists('methodName', $call)) {
-            return static::_xmlrpcs_multicall_error('nomethod');
+            return $this->_xmlrpcs_multicall_error('nomethod');
         }
         if (!is_string($call['methodName'])) {
-            return static::_xmlrpcs_multicall_error('notstring');
+            return $this->_xmlrpcs_multicall_error('notstring');
         }
         if ($call['methodName'] == 'system.multicall') {
-            return static::_xmlrpcs_multicall_error('recursion');
+            return $this->_xmlrpcs_multicall_error('recursion');
         }
         if (!array_key_exists('params', $call)) {
-            return static::_xmlrpcs_multicall_error('noparams');
+            return $this->_xmlrpcs_multicall_error('noparams');
         }
         if (!is_array($call['params'])) {
-            return static::_xmlrpcs_multicall_error('notarray');
+            return $this->_xmlrpcs_multicall_error('notarray');
         }
 
         // this is a simplistic hack, since we might have received
@@ -1103,37 +1097,36 @@ class Server implements Log\LoggerAwareInterface
             }
         }
 
-        $result = $server->execute($call['methodName'], $call['params'], $pt);
+        $result = $this->execute($call['methodName'], $call['params'], $pt);
 
         if ($result->faultCode() != 0) {
-            return static::_xmlrpcs_multicall_error($result); // Method returned fault.
+            return $this->_xmlrpcs_multicall_error($result); // Method returned fault.
         }
 
-        return new Value(array($result->value()), 'array');
+        return (new Value(array($result->value()), 'array'))->setLogger($this->logger);
     }
 
     /**
-     * @param Server $server
      * @param Request|array $req
      * @return Response
      */
-    public static function _xmlrpcs_multicall($server, $req)
+    public function _xmlrpcs_multicall($req)
     {
         $result = array();
         // let accept a plain list of php parameters, beside a single xmlrpc msg object
         if (is_object($req)) {
             $calls = $req->getParam(0);
             foreach($calls as $call) {
-                $result[] = static::_xmlrpcs_multicall_do_call($server, $call);
+                $result[] = $this->_xmlrpcs_multicall_do_call($call);
             }
         } else {
             $numCalls = count($req);
             for ($i = 0; $i < $numCalls; $i++) {
-                $result[$i] = static::_xmlrpcs_multicall_do_call_phpvals($server, $req[$i]);
+                $result[$i] = $this->_xmlrpcs_multicall_do_call_phpvals($req[$i]);
             }
         }
 
-        return new Response(new Value($result, 'array'));
+        return new Response((new Value($result, 'array'))->setLogger($this->logger));
     }
 
     /**
@@ -1144,7 +1137,7 @@ class Server implements Log\LoggerAwareInterface
      *
      * NB: in fact a user defined error handler can only handle WARNING, NOTICE and USER_* errors.
      */
-    public static function _xmlrpcs_errorHandler($errCode, $errString, $filename = null, $lineNo = null, $context = null)
+    public function _xmlrpcs_errorHandler($errCode, $errString, $filename = null, $lineNo = null, $context = null)
     {
         // obey the @ protocol
         if (error_reporting() == 0) {
@@ -1153,7 +1146,7 @@ class Server implements Log\LoggerAwareInterface
 
         //if($errCode != E_NOTICE && $errCode != E_WARNING && $errCode != E_USER_NOTICE && $errCode != E_USER_WARNING)
         if ($errCode != E_STRICT) {
-            \PhpXmlRpc\Server::error_occurred($errString);
+           $this->error_occurred($errString);
         }
         // Try to avoid as much as possible disruption to the previous error handling
         // mechanism in place
@@ -1161,14 +1154,11 @@ class Server implements Log\LoggerAwareInterface
             // The previous error handler was the default: all we should do is log error
             // to the default error log (if level high enough)
             if (ini_get('log_errors') && (intval(ini_get('error_reporting')) & $errCode)) {
-                if (self::$logger === null) {
-                    self::$logger = Logger::instance();
-                }
-                self::$logger->errorLog($errString);
+                $this->logger->error($errString);
             }
         } else {
             // Pass control on to previous error handler, trying to avoid loops...
-            if (self::$_xmlrpcs_prev_ehandler != array('\PhpXmlRpc\Server', '_xmlrpcs_errorHandler')) {
+            if (self::$_xmlrpcs_prev_ehandler != array($this, '_xmlrpcs_errorHandler')) {
                 if (is_array(self::$_xmlrpcs_prev_ehandler)) {
                     // the following works both with static class methods and plain object methods as error handler
                     call_user_func_array(self::$_xmlrpcs_prev_ehandler, array($errCode, $errString, $filename, $lineNo, $context));
