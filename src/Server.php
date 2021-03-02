@@ -14,7 +14,8 @@ class Server implements Log\LoggerAwareInterface
 {
     use LoggerAwareTrait;
 
-    protected static $parser;
+    protected $parser;
+    protected $encoder;
     protected static $charsetEncoder;
 
     /**
@@ -101,19 +102,6 @@ class Server implements Log\LoggerAwareInterface
     protected static $_xmlrpcs_occurred_errors = '';
     protected static $_xmlrpcs_prev_ehandler = '';
 
-    public function getParser()
-    {
-        if (self::$parser === null) {
-            self::$parser = new XMLParser();
-        }
-        return self::$parser;
-    }
-
-    public static function setParser($parser)
-    {
-        self::$parser = $parser;
-    }
-
     public function getCharsetEncoder()
     {
         if (self::$charsetEncoder === null) {
@@ -138,7 +126,7 @@ class Server implements Log\LoggerAwareInterface
      *                             - parameters_type (string, optional)
      * @param boolean $serviceNow set to false to prevent the server from running upon construction
      */
-    public function __construct($dispatchMap = null, $serviceNow = true)
+    public function __construct(Encoder $encoder, XMLParser $parser, $dispatchMap = null, $serviceNow = true)
     {
         // if ZLIB is enabled, let the server by default accept compressed requests,
         // and compress responses sent to clients that support them
@@ -163,6 +151,8 @@ class Server implements Log\LoggerAwareInterface
             }
         }
 
+        $this->parser = $parser;
+        $this->encoder = $encoder;
         $this->setLogger(new Log\NullLogger());
     }
 
@@ -564,7 +554,7 @@ class Server implements Log\LoggerAwareInterface
             $options = array(XML_OPTION_TARGET_ENCODING => PhpXmlRpc::$xmlrpc_internalencoding);
         }
 
-        $xmlRpcParser = $this->getParser();
+        $xmlRpcParser = $this->parser;
         $xmlRpcParser->parse($data, $this->functions_parameters_type, XMLParser::ACCEPT_REQUEST, $options);
         if ($xmlRpcParser->_xh['isf'] > 2) {
             // (BC) we return XML error as a faultCode
@@ -727,8 +717,7 @@ class Server implements Log\LoggerAwareInterface
                         } else {
                             // functions using EPI api should NOT return resp objects,
                             // so make sure we encode the return type correctly
-                            $encoder = new Encoder();
-                            $r = new Response($encoder->encode($r, array('extension_api')));
+                            $r = new Response($this->encoder->encode($r, array('extension_api')));
                         }
                     } else {
                         $r = call_user_func_array($func, $params);
@@ -738,8 +727,7 @@ class Server implements Log\LoggerAwareInterface
                 if (!is_a($r, '\PhpXmlRpc\Response')) {
                     // what should we assume here about automatic encoding of datetimes
                     // and php classes instances???
-                    $encoder = new Encoder();
-                    $r = new Response($encoder->encode($r, $this->phpvals_encoding_options));
+                    $r = new Response($this->encoder->encode($r, $this->phpvals_encoding_options));
                 }
             }
         } catch (\Exception $e) {
@@ -903,8 +891,7 @@ class Server implements Log\LoggerAwareInterface
      */
     public function _xmlrpcs_getCapabilities($req = null)
     {
-        $encoder = new Encoder();
-        return new Response($encoder->encode($this->getCapabilities()));
+        return new Response($this->encoder->encode($this->getCapabilities()));
     }
 
     /**

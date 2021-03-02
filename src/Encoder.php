@@ -15,24 +15,12 @@ class Encoder implements Log\LoggerAwareInterface
 {
     use LoggerAwareTrait;
 
-    protected static $parser;
+    protected $parser;
 
-    public function __construct()
+    public function __construct(XMLParser $parser)
     {
+        $this->parser = $parser;
         $this->setLogger(new Log\NullLogger());
-    }
-
-    public function getParser()
-    {
-        if (self::$parser === null) {
-            self::$parser = new XMLParser();
-        }
-        return self::$parser;
-    }
-
-    public static function setParser($parser)
-    {
-        self::$parser = $parser;
     }
 
     /**
@@ -317,7 +305,7 @@ class Encoder implements Log\LoggerAwareInterface
             $parserOptions = array(XML_OPTION_TARGET_ENCODING => PhpXmlRpc::$xmlrpc_internalencoding);
         }
 
-        $xmlRpcParser = $this->getParser();
+        $xmlRpcParser = $this->parser;
         $xmlRpcParser->parse(
             $xmlVal,
             XMLParser::RETURN_XMLRPCVALS,
